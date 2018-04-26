@@ -84,13 +84,18 @@ public class ExternalSortCollectors {
         public Configuration<T> build() {
             Comparator<T> comparator = this.comparator;
             if (comparator == null) {
-                comparator = (Comparator<T>)Comparator.naturalOrder();
+                comparator = naturalOrder();
             }
             if (maxRecordSize > writeBufferSize) {
                 throw new IllegalArgumentException("record size must not be larger than write buffer");
             }
 
             return new Configuration<>(serializer, comparator, maxRecordSize, writeBufferSize, internalSortMaxItems, maxNumberOfChunks);
+        }
+
+        @SuppressWarnings("unchecked")
+        private Comparator<T> naturalOrder() {
+            return (Comparator<T>)Comparator.naturalOrder();
         }
     }
 
