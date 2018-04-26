@@ -27,18 +27,22 @@ class MergeSpliterator<T> implements Spliterator<T>, Closeable {
 
     @Override
     public boolean tryAdvance(Consumer<? super T> action) {
-        ReadableChunk<T> chunk = chunks.remove();
+        ReadableChunk<T> chunk = chunks.poll();
+
+        if (chunk == null) {
+            return false;
+        }
 
         T data = chunk.next();
         action.accept(data);
 
         if (chunk.hasNext()) {
-            chunks.add(chunk);
+            chunks.offer(chunk);
         } else {
             chunk.close();
         }
 
-        return !chunks.isEmpty();
+        return true;
     }
 
     @Override

@@ -30,7 +30,8 @@ public class ExternalSortCollectors {
                 configuration.getComparator(),
                 configuration.getMaxRecordSize(),
                 configuration.getWriteBufferSize(),
-                configuration.getInternalSortMaxItems());
+                configuration.getInternalSortMaxItems(),
+                configuration.getMaxNumberOfChunks());
     }
 
     public interface Serializer<T> {
@@ -42,12 +43,14 @@ public class ExternalSortCollectors {
         static final int DEFAULT_MAX_RECORD_SIZE = 4096;
         static final int DEFAULT_WRITE_BUFFER_SIZE = 16 * DEFAULT_MAX_RECORD_SIZE;
         static final int DEFAULT_INTERNAL_SORT_MAX_ITEMS = 20_000;
+        static final int DEFAULT_MAX_NUMBER_OF_CHUNKS = 10;
 
         private final Serializer<T> serializer;
         private Comparator<T> comparator;
         private int maxRecordSize = DEFAULT_MAX_RECORD_SIZE;
         private int writeBufferSize = DEFAULT_WRITE_BUFFER_SIZE;
         private int internalSortMaxItems = DEFAULT_INTERNAL_SORT_MAX_ITEMS;
+        private int maxNumberOfChunks = DEFAULT_MAX_NUMBER_OF_CHUNKS;
 
         ConfigurationBuilder(Serializer<T> serializer) {
             this.serializer = serializer;
@@ -73,6 +76,11 @@ public class ExternalSortCollectors {
             return this;
         }
 
+        public ConfigurationBuilder<T> withMaxNumberOfChunks(int maxNumberOfChunks) {
+            this.maxNumberOfChunks = maxNumberOfChunks;
+            return this;
+        }
+
         public Configuration<T> build() {
             Comparator<T> comparator = this.comparator;
             if (comparator == null) {
@@ -82,7 +90,7 @@ public class ExternalSortCollectors {
                 throw new IllegalArgumentException("record size must not be larger than write buffer");
             }
 
-            return new Configuration<>(serializer, comparator, maxRecordSize, writeBufferSize, internalSortMaxItems);
+            return new Configuration<>(serializer, comparator, maxRecordSize, writeBufferSize, internalSortMaxItems, maxNumberOfChunks);
         }
     }
 
@@ -92,13 +100,15 @@ public class ExternalSortCollectors {
         private final int maxRecordSize;
         private final int writeBufferSize;
         private final int internalSortMaxItems;
+        private final int maxNumberOfChunks;
 
-        Configuration(Serializer<T> serializer, Comparator<T> comparator, int maxRecordSize, int writeBufferSize, int internalSortMaxItems) {
+        Configuration(Serializer<T> serializer, Comparator<T> comparator, int maxRecordSize, int writeBufferSize, int internalSortMaxItems, int maxNumberOfChunks) {
             this.serializer = serializer;
             this.comparator = comparator;
             this.maxRecordSize = maxRecordSize;
             this.writeBufferSize = writeBufferSize;
             this.internalSortMaxItems = internalSortMaxItems;
+            this.maxNumberOfChunks = maxNumberOfChunks;
         }
 
         public Serializer<T> getSerializer() {
@@ -119,6 +129,10 @@ public class ExternalSortCollectors {
 
         public int getInternalSortMaxItems() {
             return internalSortMaxItems;
+        }
+
+        public int getMaxNumberOfChunks() {
+            return maxNumberOfChunks;
         }
     }
 

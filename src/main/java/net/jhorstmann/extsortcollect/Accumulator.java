@@ -40,6 +40,7 @@ class Accumulator<T> {
     private final int maxRecordSize;
     private final int writeBufferSize;
     private final int internalSortMaxItems;
+    private final int maxNumberOfChunks;
     private final ArrayList<T> data;
     private final ArrayList<Chunk> chunks;
     private long size;
@@ -47,13 +48,14 @@ class Accumulator<T> {
     private FileChannel file;
 
 
-    Accumulator(ExternalSortCollectors.Serializer<T> serializer, Comparator<T> comparator, int maxRecordSize, int writeBufferSize, int internalSortMaxItems) {
+    Accumulator(ExternalSortCollectors.Serializer<T> serializer, Comparator<T> comparator, int maxRecordSize, int writeBufferSize, int internalSortMaxItems, int maxNumberOfChunks) {
         this.serializer = serializer;
         this.comparator = comparator;
         this.maxRecordSize = maxRecordSize;
         this.writeBufferSize = writeBufferSize;
         this.internalSortMaxItems = internalSortMaxItems;
         this.data = new ArrayList<>(internalSortMaxItems);
+        this.maxNumberOfChunks = maxNumberOfChunks;
         this.chunks = new ArrayList<>();
     }
 
@@ -126,7 +128,7 @@ class Accumulator<T> {
         }
     }
 
-    private Stream<T> mergedStream() throws IOException {
+    private PriorityQueue<ReadableChunk<T>> makeQueue() throws IOException {
         PriorityQueue<ReadableChunk<T>> queue = new PriorityQueue<>();
         MappedByteBuffer buffer = file.map(FileChannel.MapMode.READ_ONLY, 0, file.size());
         // TODO: create multiple mappings if file to large for single ByteBuffer
@@ -137,6 +139,11 @@ class Accumulator<T> {
             view.limit(Math.toIntExact(chunk.getOffset() + chunk.getLength()));
             queue.add(new ReadableChunk<>(serializer, comparator, view, i));
         }
+        return queue;
+    }
+
+    private Stream<T> mergedStream() throws IOException {
+        PriorityQueue<ReadableChunk<T>> queue = makeQueue();
 
         MergeSpliterator<T> spliterator = new MergeSpliterator<>(comparator, queue, size);
 
@@ -150,11 +157,15 @@ class Accumulator<T> {
                 .onClose(spliterator::close);
     }
 
+    private static FileChannel createTempFile() throws IOException {
+        Path tempFile = Files.createTempFile("extsort_", ".tmp");
+        return FileChannel.open(tempFile, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE, StandardOpenOption.DELETE_ON_CLOSE);
+    }
+
     private void writeSortedBuffer() throws IOException {
 
         if (file == null) {
-            Path tempFile = Files.createTempFile("extsort_", ".tmp");
-            this.file = FileChannel.open(tempFile, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE, StandardOpenOption.DELETE_ON_CLOSE);
+            this.file = createTempFile();
         }
         if (buffer == null) {
             this.buffer = ByteBuffer.allocate(writeBufferSize);
@@ -176,6 +187,32 @@ class Accumulator<T> {
         }
         long length = file.position() - offset;
         chunks.add(new Chunk(offset, length));
+
+        if (chunks.size() > maxNumberOfChunks) {
+            mergeChunks();
+        }
+    }
+
+    private void mergeChunks() throws IOException {
+        // TODO: error handling
+        PriorityQueue<ReadableChunk<T>> chunks = makeQueue();
+        this.file.close();
+        FileChannel newFile = createTempFile();
+
+        ReadableChunk<T> chunk;
+        while ((chunk = chunks.poll()) != null) {
+            T data = chunk.next();
+            chunk.writeCurrentElementTo(newFile);
+            if (chunk.hasNext()) {
+                chunks.offer(chunk);
+            } else {
+                chunk.close();
+            }
+        }
+
+        this.file = newFile;
+        this.chunks.clear();
+        this.chunks.add(new Chunk(0, newFile.position()));
     }
 
 }

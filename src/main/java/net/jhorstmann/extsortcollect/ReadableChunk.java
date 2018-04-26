@@ -3,6 +3,7 @@ package net.jhorstmann.extsortcollect;
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.channels.WritableByteChannel;
 import java.util.Comparator;
 import java.util.Iterator;
 
@@ -27,8 +28,19 @@ class ReadableChunk<T> implements Comparable<ReadableChunk<T>>, Iterator<T>, Clo
         this.data = null;
     }
 
+    int writeCurrentElementTo(WritableByteChannel dst) throws IOException {
+        int position = buffer.position();
+        int limit = buffer.limit();
+        buffer.reset();
+        buffer.limit(position);
+        int bytesWritten = dst.write(buffer);
+        buffer.limit(limit);
+        return bytesWritten;
+    }
+
     T current() {
         if (data == null) {
+            buffer.mark();
             data = serializer.read(buffer);
         }
         return data;
