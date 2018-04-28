@@ -38,6 +38,15 @@ class ReadableChunk<T> implements Comparable<ReadableChunk<T>>, Iterator<T>, Clo
         return bytesWritten;
     }
 
+    void writeCurrentElementTo(ByteBuffer dst) {
+        int position = buffer.position();
+        int limit = buffer.limit();
+        buffer.reset();
+        buffer.limit(position);
+        dst.put(buffer);
+        buffer.limit(limit);
+    }
+
     T current() {
         if (data == null) {
             buffer.mark();

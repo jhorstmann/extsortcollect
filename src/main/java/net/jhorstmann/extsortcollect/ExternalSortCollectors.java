@@ -1,10 +1,12 @@
 package net.jhorstmann.extsortcollect;
 
 import java.nio.ByteBuffer;
+import java.nio.file.Path;
 import java.util.*;
 import java.util.function.Supplier;
 import java.util.stream.Collector;
 import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
 
 public class ExternalSortCollectors {
 
@@ -21,9 +23,29 @@ public class ExternalSortCollectors {
         return externalSort(configuration(serializer).withComparator(comparator).build());
 
     }
+
     public static <T> Collector<T, ?, Stream<T>> externalSort(Configuration<T> configuration) {
         return Collector.of(supplier(configuration), Accumulator::add, Accumulator::combine, Accumulator::finish, Collector.Characteristics.UNORDERED);
     }
+
+    public static <T> Stream<T> stream(Configuration<T> configuration, Path path) {
+        FileSpliterator<T> spliterator = new FileSpliterator<>(path,
+                configuration.getSerializer(),
+                configuration.getMaxRecordSize(),
+                configuration.getWriteBufferSize());
+        return StreamSupport.stream(spliterator, false)
+                .onClose(spliterator::close);
+    }
+
+    public static <T> Stream<T> sorted(Configuration<T> configuration, Path path) {
+        FileSpliterator<T> spliterator = new FileSpliterator<>(path,
+                configuration.getSerializer(),
+                configuration.getMaxRecordSize(),
+                configuration.getWriteBufferSize());
+        return StreamSupport.stream(spliterator, false)
+                .collect(externalSort(configuration));
+    }
+
 
     private static <T> Supplier<Accumulator<T>> supplier(Configuration<T> configuration) {
         return () -> new Accumulator<>(configuration.getSerializer(),

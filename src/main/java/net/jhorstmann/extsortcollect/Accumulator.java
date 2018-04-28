@@ -143,13 +143,16 @@ class Accumulator<T> {
     }
 
     private Stream<T> mergedStream() throws IOException {
-        PriorityQueue<ReadableChunk<T>> queue = makeQueue();
+        MergeSpliterator<T> spliterator;
 
-        MergeSpliterator<T> spliterator = new MergeSpliterator<>(comparator, queue, size);
+        try (FileChannel file = this.file) {
+            PriorityQueue<ReadableChunk<T>> queue = makeQueue();
 
-        this.buffer = null;
-        this.file.close();
-        this.file = null;
+            spliterator = new MergeSpliterator<>(comparator, queue, size);
+
+            this.buffer = null;
+            this.file = null;
+        }
 
         // TODO: Unmap buffer on close using reflection and DirectByteBuffer#cleaner()
 
@@ -188,7 +191,7 @@ class Accumulator<T> {
         long length = file.position() - offset;
         chunks.add(new Chunk(offset, length));
 
-        if (chunks.size() > maxNumberOfChunks) {
+        if (chunks.size() >= maxNumberOfChunks) {
             mergeChunks();
         }
     }
@@ -197,17 +200,33 @@ class Accumulator<T> {
         // TODO: error handling
         PriorityQueue<ReadableChunk<T>> chunks = makeQueue();
         this.file.close();
+        this.file = null;
+        this.buffer.clear();
         FileChannel newFile = createTempFile();
 
         ReadableChunk<T> chunk;
         while ((chunk = chunks.poll()) != null) {
             T data = chunk.next();
-            chunk.writeCurrentElementTo(newFile);
+            //chunk.writeCurrentElementTo(newFile);
+            chunk.writeCurrentElementTo(buffer);
             if (chunk.hasNext()) {
                 chunks.offer(chunk);
             } else {
                 chunk.close();
             }
+
+            if (buffer.remaining() < maxRecordSize) {
+                buffer.flip();
+                newFile.write(buffer);
+                buffer.clear();
+            }
+        }
+
+        // write remaining data to file
+        if (buffer.position() > 0) {
+            buffer.flip();
+            newFile.write(buffer);
+            buffer.clear();
         }
 
         this.file = newFile;
