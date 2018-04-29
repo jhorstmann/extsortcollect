@@ -14,7 +14,7 @@ class ReadableChunk<T> implements Comparable<ReadableChunk<T>>, Iterator<T>, Clo
     private ByteBuffer buffer;
     private T data;
 
-    ReadableChunk(ExternalSortCollectors.Serializer<T> serializer, Comparator<T> comparator, ByteBuffer buffer, int stableOrder) throws IOException {
+    ReadableChunk(ExternalSortCollectors.Serializer<T> serializer, Comparator<T> comparator, ByteBuffer buffer, int stableOrder) {
         this.serializer = serializer;
         this.comparator = comparator;
         this.stableOrder = stableOrder;
@@ -29,6 +29,8 @@ class ReadableChunk<T> implements Comparable<ReadableChunk<T>>, Iterator<T>, Clo
     }
 
     int writeCurrentElementTo(WritableByteChannel dst) throws IOException {
+        ByteBuffer buffer = this.buffer;
+
         int position = buffer.position();
         int limit = buffer.limit();
         buffer.reset();
@@ -39,6 +41,8 @@ class ReadableChunk<T> implements Comparable<ReadableChunk<T>>, Iterator<T>, Clo
     }
 
     void writeCurrentElementTo(ByteBuffer dst) {
+        ByteBuffer buffer = this.buffer;
+
         int position = buffer.position();
         int limit = buffer.limit();
         buffer.reset();
@@ -47,17 +51,20 @@ class ReadableChunk<T> implements Comparable<ReadableChunk<T>>, Iterator<T>, Clo
         buffer.limit(limit);
     }
 
-    T current() {
+    private T current() {
+        ByteBuffer buffer = this.buffer;
+        T data = this.data;
+
         if (data == null) {
             buffer.mark();
-            data = serializer.read(buffer);
+            this.data = data = serializer.read(buffer);
         }
         return data;
     }
 
     @Override
     public boolean hasNext() {
-        return data != null || !isEmpty();
+        return data != null || buffer.remaining() > 0;
     }
 
     @Override
@@ -65,10 +72,6 @@ class ReadableChunk<T> implements Comparable<ReadableChunk<T>>, Iterator<T>, Clo
         T current = current();
         data = null;
         return current;
-    }
-
-    boolean isEmpty() {
-        return buffer.remaining() == 0;
     }
 
     @Override

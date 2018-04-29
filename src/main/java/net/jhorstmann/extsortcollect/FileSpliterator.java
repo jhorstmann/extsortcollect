@@ -38,6 +38,9 @@ class FileSpliterator<T> implements Spliterator<T>, Closeable {
 
     @Override
     public boolean tryAdvance(Consumer<? super T> action) {
+        ByteBuffer buffer = this.buffer;
+        FileChannel file = this.file;
+
         try {
             long fileRemaining = file.size() - file.position();
             if (fileRemaining == 0 && buffer.remaining() == 0) {
@@ -62,6 +65,9 @@ class FileSpliterator<T> implements Spliterator<T>, Closeable {
 
     @Override
     public void forEachRemaining(Consumer<? super T> action) {
+        ByteBuffer buffer = this.buffer;
+        FileChannel file = this.file;
+
         buffer.compact();
 
         try {

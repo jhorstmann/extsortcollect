@@ -59,22 +59,24 @@ class Accumulator<T> {
         this.chunks = new ArrayList<>();
     }
 
-    void add(T data) {
-        addWithoutSize(data);
+    void add(T elem) {
+        addWithoutSize(elem);
         this.size++;
     }
 
-    private void addWithoutSize(T data) {
-        this.data.add(data);
-        if (this.data.size() >= internalSortMaxItems) {
-            this.data.sort(comparator);
+    private void addWithoutSize(T elem) {
+        ArrayList<T> data = this.data;
+
+        data.add(elem);
+        if (data.size() >= internalSortMaxItems) {
+            data.sort(comparator);
 
             try {
                 writeSortedBuffer();
             } catch (IOException e) {
                 throw new UncheckedIOException(e);
             }
-            this.data.clear();
+            data.clear();
         }
     }
 
@@ -111,14 +113,16 @@ class Accumulator<T> {
     }
 
     Stream<T> finish() {
-        if (this.data.size() > 0) {
-            this.data.sort(comparator);
+        ArrayList<T> data = this.data;
+
+        if (data.size() > 0) {
+            data.sort(comparator);
         }
         if (file == null) {
-            return this.data.stream();
+            return data.stream();
         } else {
             try {
-                if (this.data.size() > 0) {
+                if (data.size() > 0) {
                     writeSortedBuffer();
                 }
                 return mergedStream();
@@ -129,6 +133,9 @@ class Accumulator<T> {
     }
 
     private PriorityQueue<ReadableChunk<T>> makeQueue() throws IOException {
+        FileChannel file = this.file;
+        ArrayList<Chunk> chunks = this.chunks;
+
         PriorityQueue<ReadableChunk<T>> queue = new PriorityQueue<>();
         MappedByteBuffer buffer = file.map(FileChannel.MapMode.READ_ONLY, 0, file.size());
         // TODO: create multiple mappings if file to large for single ByteBuffer
@@ -166,12 +173,15 @@ class Accumulator<T> {
     }
 
     private void writeSortedBuffer() throws IOException {
+        ByteBuffer buffer = this.buffer;
+        FileChannel file = this.file;
+        ArrayList<Chunk> chunks = this.chunks;
 
         if (file == null) {
-            this.file = createTempFile();
+            this.file = file = createTempFile();
         }
         if (buffer == null) {
-            this.buffer = ByteBuffer.allocate(writeBufferSize);
+            this.buffer = buffer = ByteBuffer.allocate(writeBufferSize);
         }
         long offset = file.position();
         for (T datum : data) {
@@ -198,19 +208,21 @@ class Accumulator<T> {
 
     private void mergeChunks() throws IOException {
         // TODO: error handling
-        PriorityQueue<ReadableChunk<T>> chunks = makeQueue();
+        PriorityQueue<ReadableChunk<T>> queue = makeQueue();
         this.file.close();
         this.file = null;
-        this.buffer.clear();
+
+        ByteBuffer buffer = this.buffer;
+        buffer.clear();
         FileChannel newFile = createTempFile();
 
         ReadableChunk<T> chunk;
-        while ((chunk = chunks.poll()) != null) {
+        while ((chunk = queue.poll()) != null) {
             T data = chunk.next();
             //chunk.writeCurrentElementTo(newFile);
             chunk.writeCurrentElementTo(buffer);
             if (chunk.hasNext()) {
-                chunks.offer(chunk);
+                queue.offer(chunk);
             } else {
                 chunk.close();
             }
