@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.List;
 import java.util.PriorityQueue;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
@@ -132,10 +133,7 @@ class Accumulator<T> {
         }
     }
 
-    private PriorityQueue<ReadableChunk<T>> makeQueue() throws IOException {
-        FileChannel file = this.file;
-        ArrayList<Chunk> chunks = this.chunks;
-
+    private PriorityQueue<ReadableChunk<T>> makeQueue(List<Chunk> chunks) throws IOException {
         PriorityQueue<ReadableChunk<T>> queue = new PriorityQueue<>();
         MappedByteBuffer buffer = file.map(FileChannel.MapMode.READ_ONLY, 0, file.size());
         // TODO: create multiple mappings if file to large for single ByteBuffer
@@ -150,10 +148,15 @@ class Accumulator<T> {
     }
 
     private Stream<T> mergedStream() throws IOException {
+
+        while (chunks.size() > maxNumberOfChunks) {
+            partialMerge();
+        }
+
         MergeSpliterator<T> spliterator;
 
         try (FileChannel file = this.file) {
-            PriorityQueue<ReadableChunk<T>> queue = makeQueue();
+            PriorityQueue<ReadableChunk<T>> queue = makeQueue(this.chunks);
 
             spliterator = new MergeSpliterator<>(comparator, queue, size);
 
@@ -200,50 +203,42 @@ class Accumulator<T> {
         }
         long length = file.position() - offset;
         chunks.add(new Chunk(offset, length));
-
-        if (chunks.size() >= maxNumberOfChunks) {
-            mergeChunks();
-        }
     }
 
-    private void mergeChunks() throws IOException {
-        // TODO: error handling
-        PriorityQueue<ReadableChunk<T>> queue = makeQueue();
-        this.file.close();
-        this.file = null;
+    private void partialMerge() throws IOException {
+        System.out.println("partial merge");
 
         ByteBuffer buffer = this.buffer;
         buffer.clear();
+
+        ArrayList<Chunk> chunks = this.chunks;
+        ArrayList<Chunk> newChunks = new ArrayList<>(maxNumberOfChunks);
+
         FileChannel newFile = createTempFile();
 
-        ReadableChunk<T> chunk;
-        while ((chunk = queue.poll()) != null) {
-            T data = chunk.next();
-            //chunk.writeCurrentElementTo(newFile);
-            chunk.writeCurrentElementTo(buffer);
-            if (chunk.hasNext()) {
-                queue.offer(chunk);
-            } else {
-                chunk.close();
+        long offset = 0;
+        for (int i = 0; i < chunks.size(); ) {
+            int size = maxNumberOfChunks;
+
+            System.out.println("merging chunks " + i + " " + Math.min(chunks.size(), i+size));
+            PriorityQueue<ReadableChunk<T>> queue = makeQueue(chunks.subList(i, Math.min(chunks.size(), i+size)));
+            try (MergeSpliterator<T> merge = new MergeSpliterator<>(comparator, queue, Long.MAX_VALUE)) {
+                merge.mergeInto(newFile, buffer, maxRecordSize);
             }
 
-            if (buffer.remaining() < maxRecordSize) {
-                buffer.flip();
-                newFile.write(buffer);
-                buffer.clear();
-            }
+            i+= size;
+
+
+            long position = newFile.position();
+            long length = position - offset;
+            newChunks.add(new Chunk(offset, length));
+            offset = position;
         }
 
-        // write remaining data to file
-        if (buffer.position() > 0) {
-            buffer.flip();
-            newFile.write(buffer);
-            buffer.clear();
-        }
-
+        this.file.close();
         this.file = newFile;
-        this.chunks.clear();
-        this.chunks.add(new Chunk(0, newFile.position()));
+        chunks.clear();
+        chunks.addAll(newChunks);
     }
 
 }

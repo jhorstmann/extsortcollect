@@ -16,7 +16,7 @@ import java.util.stream.StreamSupport;
 public class SortFileBenchmark {
     public static void main(String[] args) throws IOException {
 
-        DataSerializer serializer = new DataSerializer();
+        ExternalSortCollectors.Serializer<Data> serializer = new DataSerializer();
         Comparator<Data> comparator = Comparator.comparing(Data::getId);
         Path path = Paths.get("data/random.data");
 
@@ -46,7 +46,7 @@ public class SortFileBenchmark {
                 .withInternalSortMaxItems(100_000)
                 .withMaxRecordSize(1024)
                 .withWriteBufferSize(64 * 4096)
-                .withMaxNumberOfChunks(1000)
+                .withMaxNumberOfChunks(2000)
                 .build();
 
         Stream<Data> dataStream = ExternalSortCollectors.stream(configuration, path);

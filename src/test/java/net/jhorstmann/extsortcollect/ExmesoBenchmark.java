@@ -93,9 +93,10 @@ public class ExmesoBenchmark {
         ExmesoDataSerializer serializer = new ExmesoDataSerializer();
         Comparator<Data> comparator = Comparator.comparing(Data::getId);
 
+        ExternalMergeSort.debugMerge = true;
         ExternalMergeSort<Data> sort = ExternalMergeSort.newSorter(serializer, comparator)
                 .withChunkSize(100_000)
-                .withMaxOpenFiles(50)
+                .withMaxOpenFiles(2000)
                 .withCleanup(true)
                 .build();
 

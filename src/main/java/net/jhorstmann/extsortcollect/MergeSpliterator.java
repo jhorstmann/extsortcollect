@@ -1,6 +1,10 @@
 package net.jhorstmann.extsortcollect;
 
 import java.io.Closeable;
+import java.io.IOException;
+import java.nio.Buffer;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.util.Comparator;
 import java.util.PriorityQueue;
 import java.util.Spliterator;
@@ -43,6 +47,33 @@ class MergeSpliterator<T> implements Spliterator<T>, Closeable {
         }
 
         return true;
+    }
+
+    void mergeInto(FileChannel file, ByteBuffer buffer, int maxRecordSize) throws IOException {
+        ReadableChunk<T> chunk;
+        while ((chunk = chunks.poll()) != null) {
+            T data = chunk.next();
+            //chunk.writeCurrentElementTo(newFile);
+            chunk.writeCurrentElementTo(buffer);
+            if (chunk.hasNext()) {
+                chunks.offer(chunk);
+            } else {
+                chunk.close();
+            }
+
+            if (buffer.remaining() < maxRecordSize) {
+                buffer.flip();
+                file.write(buffer);
+                buffer.clear();
+            }
+        }
+
+        // write remaining data to file
+        if (buffer.position() > 0) {
+            buffer.flip();
+            file.write(buffer);
+            buffer.clear();
+        }
     }
 
     @Override
