@@ -1,9 +1,7 @@
 package net.jhorstmann.extsortcollect;
 
 import java.io.Closeable;
-import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.channels.WritableByteChannel;
 import java.util.Comparator;
 import java.util.Iterator;
 
@@ -26,29 +24,6 @@ class ReadableChunk<T> implements Comparable<ReadableChunk<T>>, Iterator<T>, Clo
         // TODO: unmap buffer;
         this.buffer = null;
         this.data = null;
-    }
-
-    int writeCurrentElementTo(WritableByteChannel dst) throws IOException {
-        ByteBuffer buffer = this.buffer;
-
-        int position = buffer.position();
-        int limit = buffer.limit();
-        buffer.reset();
-        buffer.limit(position);
-        int bytesWritten = dst.write(buffer);
-        buffer.limit(limit);
-        return bytesWritten;
-    }
-
-    void writeCurrentElementTo(ByteBuffer dst) {
-        ByteBuffer buffer = this.buffer;
-
-        int position = buffer.position();
-        int limit = buffer.limit();
-        buffer.reset();
-        buffer.limit(position);
-        dst.put(buffer);
-        buffer.limit(limit);
     }
 
     private T current() {

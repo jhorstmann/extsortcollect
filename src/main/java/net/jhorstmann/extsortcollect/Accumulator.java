@@ -34,6 +34,10 @@ class Accumulator<T> {
             return length;
         }
 
+        @Override
+        public String toString() {
+            return String.format("[%d, %d)", offset, offset+length);
+        }
     }
 
     private final ExternalSortCollectors.Serializer<T> serializer;
@@ -41,7 +45,6 @@ class Accumulator<T> {
     private final int maxRecordSize;
     private final int writeBufferSize;
     private final int internalSortMaxItems;
-    private final int maxNumberOfChunks;
     private final ArrayList<T> data;
     private final ArrayList<Chunk> chunks;
     private long size;
@@ -49,14 +52,13 @@ class Accumulator<T> {
     private FileChannel file;
 
 
-    Accumulator(ExternalSortCollectors.Serializer<T> serializer, Comparator<T> comparator, int maxRecordSize, int writeBufferSize, int internalSortMaxItems, int maxNumberOfChunks) {
+    Accumulator(ExternalSortCollectors.Serializer<T> serializer, Comparator<T> comparator, int maxRecordSize, int writeBufferSize, int internalSortMaxItems) {
         this.serializer = serializer;
         this.comparator = comparator;
         this.maxRecordSize = maxRecordSize;
         this.writeBufferSize = writeBufferSize;
         this.internalSortMaxItems = internalSortMaxItems;
         this.data = new ArrayList<>(internalSortMaxItems);
-        this.maxNumberOfChunks = maxNumberOfChunks;
         this.chunks = new ArrayList<>();
     }
 
@@ -149,10 +151,6 @@ class Accumulator<T> {
 
     private Stream<T> mergedStream() throws IOException {
 
-        while (chunks.size() > maxNumberOfChunks) {
-            partialMerge();
-        }
-
         MergeSpliterator<T> spliterator;
 
         try (FileChannel file = this.file) {
@@ -203,42 +201,6 @@ class Accumulator<T> {
         }
         long length = file.position() - offset;
         chunks.add(new Chunk(offset, length));
-    }
-
-    private void partialMerge() throws IOException {
-        System.out.println("partial merge");
-
-        ByteBuffer buffer = this.buffer;
-        buffer.clear();
-
-        ArrayList<Chunk> chunks = this.chunks;
-        ArrayList<Chunk> newChunks = new ArrayList<>(maxNumberOfChunks);
-
-        FileChannel newFile = createTempFile();
-
-        long offset = 0;
-        for (int i = 0; i < chunks.size(); ) {
-            int size = maxNumberOfChunks;
-
-            System.out.println("merging chunks " + i + " " + Math.min(chunks.size(), i+size));
-            PriorityQueue<ReadableChunk<T>> queue = makeQueue(chunks.subList(i, Math.min(chunks.size(), i+size)));
-            try (MergeSpliterator<T> merge = new MergeSpliterator<>(comparator, queue, Long.MAX_VALUE)) {
-                merge.mergeInto(newFile, buffer, maxRecordSize);
-            }
-
-            i+= size;
-
-
-            long position = newFile.position();
-            long length = position - offset;
-            newChunks.add(new Chunk(offset, length));
-            offset = position;
-        }
-
-        this.file.close();
-        this.file = newFile;
-        chunks.clear();
-        chunks.addAll(newChunks);
     }
 
 }

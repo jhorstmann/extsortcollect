@@ -46,7 +46,6 @@ public class SortFileBenchmark {
                 .withInternalSortMaxItems(100_000)
                 .withMaxRecordSize(1024)
                 .withWriteBufferSize(64 * 4096)
-                .withMaxNumberOfChunks(2000)
                 .build();
 
         Stream<Data> dataStream = ExternalSortCollectors.stream(configuration, path);
