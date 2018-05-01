@@ -15,6 +15,7 @@ import java.util.stream.StreamSupport;
 
 public class SortFileBenchmark {
     public static void main(String[] args) throws IOException {
+        System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", "debug");
 
         ExternalSortCollectors.Serializer<Data> serializer = new DataSerializer();
         Comparator<Data> comparator = Comparator.comparing(Data::getId);
@@ -45,7 +46,7 @@ public class SortFileBenchmark {
                 .withComparator(comparator)
                 .withInternalSortMaxItems(100_000)
                 .withMaxRecordSize(1024)
-                .withWriteBufferSize(64 * 4096)
+                .withWriteBufferSize(128 * 4096)
                 .build();
 
         Stream<Data> dataStream = ExternalSortCollectors.stream(configuration, path);

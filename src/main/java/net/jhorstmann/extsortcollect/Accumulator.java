@@ -1,5 +1,8 @@
 package net.jhorstmann.extsortcollect;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
@@ -8,14 +11,12 @@ import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
-import java.util.PriorityQueue;
+import java.util.*;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
 class Accumulator<T> {
+    private static final Logger LOG = LoggerFactory.getLogger(ExternalSortCollectors.class);
 
     static class Chunk {
         private final long offset;
@@ -150,6 +151,12 @@ class Accumulator<T> {
     }
 
     private Stream<T> mergedStream() throws IOException {
+
+        if (LOG.isDebugEnabled()) {
+            LongSummaryStatistics summary = chunks.stream().mapToLong(Chunk::getLength).summaryStatistics();
+            LOG.debug("Merging [{}] chunks with avg size [{}KiB], average record size [{} bytes]",
+                    summary.getCount(), (long)Math.ceil(summary.getAverage()/1024), (long)Math.ceil((double)summary.getSum()/size));
+        }
 
         MergeSpliterator<T> spliterator;
 
