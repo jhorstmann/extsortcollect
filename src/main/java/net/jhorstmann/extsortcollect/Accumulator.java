@@ -41,14 +41,54 @@ class Accumulator<T> {
         }
     }
 
+    static class Elements<T> {
+        private final Object[] data;
+        private int size;
+
+        Elements(int capacity) {
+            this.data = new Object[capacity];
+            this.size = 0;
+        }
+
+        @SuppressWarnings("unchecked")
+        void sort(Comparator<T> comparator) {
+            Arrays.sort(data, 0, size, (Comparator<Object>) comparator);
+        }
+
+        void add(T elem) {
+            data[size++] = elem;
+        }
+
+        @SuppressWarnings("unchecked")
+        T get(int idx) {
+            return (T)data[idx];
+        }
+
+        int size() {
+            return size;
+        }
+
+        boolean isFull() {
+            return size == data.length;
+        }
+
+        void clear() {
+            size = 0;
+        }
+
+        @SuppressWarnings("unchecked")
+        Stream<T> stream() {
+            return (Stream<T>)Arrays.stream(data, 0, size);
+        }
+    }
+
     private final ExternalSortCollectors.Serializer<T> serializer;
     private final Comparator<T> comparator;
     private final int maxRecordSize;
     private final int writeBufferSize;
-    private final int internalSortMaxItems;
-    private final ArrayList<T> data;
+    private final Elements<T> data;
     private final ArrayList<Chunk> chunks;
-    private long size;
+    private long totalSize;
     private ByteBuffer buffer;
     private FileChannel file;
 
@@ -58,21 +98,20 @@ class Accumulator<T> {
         this.comparator = comparator;
         this.maxRecordSize = maxRecordSize;
         this.writeBufferSize = writeBufferSize;
-        this.internalSortMaxItems = internalSortMaxItems;
-        this.data = new ArrayList<>(internalSortMaxItems);
+        this.data = new Elements<>(internalSortMaxItems);
         this.chunks = new ArrayList<>();
     }
 
     void add(T elem) {
         addWithoutSize(elem);
-        this.size++;
+        this.totalSize++;
     }
 
     private void addWithoutSize(T elem) {
-        ArrayList<T> data = this.data;
+        Elements<T> data = this.data;
 
         data.add(elem);
-        if (data.size() >= internalSortMaxItems) {
+        if (data.isFull()) {
             data.sort(comparator);
 
             try {
@@ -107,17 +146,18 @@ class Accumulator<T> {
             acc.file = null;
             acc.buffer = null;
         }
-        for (T datum : acc.data) {
-            addWithoutSize(datum);
+        for (int i = 0; i < acc.data.size(); i++) {
+            T elem = acc.data.get(i);
+            addWithoutSize(elem);
         }
 
-        this.size += acc.size;
+        this.totalSize += acc.totalSize;
 
         return this;
     }
 
     Stream<T> finish() {
-        ArrayList<T> data = this.data;
+        Elements<T> data = this.data;
 
         if (data.size() > 0) {
             data.sort(comparator);
@@ -155,7 +195,7 @@ class Accumulator<T> {
         if (LOG.isDebugEnabled()) {
             LongSummaryStatistics summary = chunks.stream().mapToLong(Chunk::getLength).summaryStatistics();
             LOG.debug("Merging [{}] chunks with avg size [{}KiB], average record size [{} bytes]",
-                    summary.getCount(), (long)Math.ceil(summary.getAverage()/1024), (long)Math.ceil((double)summary.getSum()/size));
+                    summary.getCount(), (long)Math.ceil(summary.getAverage()/1024), (long)Math.ceil((double)summary.getSum()/ totalSize));
         }
 
         MergeSpliterator<T> spliterator;
@@ -163,7 +203,7 @@ class Accumulator<T> {
         try (FileChannel file = this.file) {
             PriorityQueue<ReadableChunk<T>> queue = makeQueue(this.chunks);
 
-            spliterator = new MergeSpliterator<>(comparator, queue, size);
+            spliterator = new MergeSpliterator<>(comparator, queue, totalSize);
 
             this.buffer = null;
             this.file = null;
@@ -192,8 +232,9 @@ class Accumulator<T> {
             this.buffer = buffer = ByteBuffer.allocate(writeBufferSize);
         }
         long offset = file.position();
-        for (T datum : data) {
-            serializer.write(buffer, datum);
+        for (int i = 0; i < data.size(); i++) {
+            T elem = data.get(i);
+            serializer.write(buffer, elem);
             if (buffer.remaining() < maxRecordSize) {
                 buffer.flip();
                 file.write(buffer);

@@ -46,7 +46,7 @@ public class SortFileBenchmark {
                 .withComparator(comparator)
                 .withInternalSortMaxItems(100_000)
                 .withMaxRecordSize(1024)
-                .withWriteBufferSize(128 * 4096)
+                .withWriteBufferSize(1024 * 4096)
                 .build();
 
         Stream<Data> dataStream = ExternalSortCollectors.stream(configuration, path);

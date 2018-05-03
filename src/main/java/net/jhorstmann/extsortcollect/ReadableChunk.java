@@ -27,10 +27,10 @@ class ReadableChunk<T> implements Comparable<ReadableChunk<T>>, Iterator<T>, Clo
     }
 
     private T current() {
-        ByteBuffer buffer = this.buffer;
         T data = this.data;
 
         if (data == null) {
+            ByteBuffer buffer = this.buffer;
             buffer.mark();
             this.data = data = serializer.read(buffer);
         }

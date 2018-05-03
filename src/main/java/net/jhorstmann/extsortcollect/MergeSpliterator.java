@@ -1,10 +1,6 @@
 package net.jhorstmann.extsortcollect;
 
 import java.io.Closeable;
-import java.io.IOException;
-import java.nio.Buffer;
-import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
 import java.util.Comparator;
 import java.util.PriorityQueue;
 import java.util.Spliterator;
@@ -56,7 +52,7 @@ class MergeSpliterator<T> implements Spliterator<T>, Closeable {
 
     @Override
     public int characteristics() {
-        return Spliterator.IMMUTABLE | Spliterator.NONNULL | Spliterator.SORTED;
+        return Spliterator.IMMUTABLE | Spliterator.NONNULL | Spliterator.SORTED | Spliterator.ORDERED | Spliterator.SIZED;
     }
 
     @Override
