@@ -77,6 +77,13 @@ class Accumulator<T> {
             return (T)data[idx];
         }
 
+        @SuppressWarnings("unchecked")
+        T getAndClear(int idx) {
+            T elem = (T)data[idx];
+            data[idx] = null;
+            return elem;
+        }
+
         int size() {
             return size;
         }
@@ -259,7 +266,7 @@ class Accumulator<T> {
         int blocks = 0;
         long offset = file.position();
         for (int i = 0; i < data.size(); i++) {
-            T elem = data.get(i);
+            T elem = data.getAndClear(i);
             serializer.write(buffer, elem);
             if (buffer.remaining() < maxRecordSize) {
                 buffer.flip();
