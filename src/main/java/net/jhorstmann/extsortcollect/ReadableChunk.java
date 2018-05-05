@@ -9,21 +9,24 @@ class ReadableChunk<T> implements Comparable<ReadableChunk<T>>, Iterator<T>, Clo
     private final ExternalSortCollectors.Serializer<T> serializer;
     private final Comparator<T> comparator;
     private final int stableOrder;
+    private Cleaner cleaner;
     private ByteBuffer buffer;
     private T data;
 
-    ReadableChunk(ExternalSortCollectors.Serializer<T> serializer, Comparator<T> comparator, ByteBuffer buffer, int stableOrder) {
+    ReadableChunk(ExternalSortCollectors.Serializer<T> serializer, Comparator<T> comparator, ByteBuffer buffer, Cleaner cleaner, int stableOrder) {
         this.serializer = serializer;
         this.comparator = comparator;
+        this.cleaner = cleaner;
         this.stableOrder = stableOrder;
         this.buffer = buffer;
     }
 
     @Override
     public void close() {
-        // TODO: unmap buffer;
         this.buffer = null;
         this.data = null;
+        this.cleaner.close();
+        this.cleaner = null;
     }
 
     private T current() {

@@ -3,6 +3,7 @@ package net.jhorstmann.extsortcollect;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
@@ -12,10 +13,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
-class Accumulator<T> {
+class Accumulator<T> implements Closeable  {
     private static final Logger LOG = LoggerFactory.getLogger(ExternalSortCollectors.class);
 
     static class Chunk {
@@ -152,18 +154,32 @@ class Accumulator<T> {
             } else {
                 long t1 = System.currentTimeMillis();
 
-                try (FileChannel other = acc.file) {
-                    long offset = file.position();
+                try {
+                    try (Closeable closeable = acc) {
+                        FileChannel source = acc.file;
+                        long offset = file.position();
 
-                    other.transferTo(0, other.size(), this.file);
+                        source.transferTo(0, source.size(), this.file);
 
-                    this.chunks.ensureCapacity(this.chunks.size() + acc.chunks.size());
-                    for (Chunk chunk : acc.chunks) {
-                        this.chunks.add(new Chunk(chunk.offset + offset, chunk.length));
+                        this.chunks.ensureCapacity(this.chunks.size() + acc.chunks.size());
+                        for (Chunk chunk : acc.chunks) {
+                            this.chunks.add(new Chunk(chunk.offset + offset, chunk.length));
+                        }
                     }
-
                 } catch (IOException e) {
+                    try {
+                        close();
+                    } catch (Throwable t2) {
+                        e.addSuppressed(t2);
+                    }
                     throw new UncheckedIOException(e);
+                } catch (Throwable t) {
+                    try {
+                        close();
+                    } catch (Throwable t2) {
+                        t.addSuppressed(t2);
+                    }
+                    throw t;
                 }
 
                 if (LOG.isTraceEnabled()) {
@@ -204,43 +220,52 @@ class Accumulator<T> {
         }
     }
 
+    @Override
+    public void close() throws IOException {
+        this.buffer = null;
+        this.directBuffer = null;
+
+        if (file != null) {
+            this.file.close();
+            this.file = null;
+        }
+    }
+
     private PriorityQueue<ReadableChunk<T>> makeQueue(List<Chunk> chunks) throws IOException {
         PriorityQueue<ReadableChunk<T>> queue = new PriorityQueue<>();
         MappedByteBuffer buffer = file.map(FileChannel.MapMode.READ_ONLY, 0, file.size());
         // TODO: create multiple mappings if file to large for single ByteBuffer
+        AtomicInteger referenceCount = new AtomicInteger(0);
         for (int i = 0; i < chunks.size(); i++) {
             Chunk chunk = chunks.get(i);
+
             ByteBuffer view = buffer.slice();
             view.position(Math.toIntExact(chunk.getOffset()));
             view.limit(Math.toIntExact(chunk.getOffset() + chunk.getLength()));
-            queue.add(new ReadableChunk<>(serializer, comparator, view, i));
+
+            Cleaner cleaner = new Cleaner(referenceCount, buffer);
+
+            queue.add(new ReadableChunk<>(serializer, comparator, view, cleaner, i));
         }
         return queue;
     }
 
     private Stream<T> mergedStream() throws IOException {
+        try (Closeable closeable = this) {
+            if (LOG.isDebugEnabled()) {
+                LongSummaryStatistics summary = chunks.stream().mapToLong(Chunk::getLength).summaryStatistics();
+                LOG.debug("Merging [{}] chunks with avg size [{}KiB], average record size [{} bytes]",
+                        summary.getCount(), (long)Math.ceil(summary.getAverage()/1024), (long)Math.ceil((double)summary.getSum()/ totalSize));
+            }
 
-        if (LOG.isDebugEnabled()) {
-            LongSummaryStatistics summary = chunks.stream().mapToLong(Chunk::getLength).summaryStatistics();
-            LOG.debug("Merging [{}] chunks with avg size [{}KiB], average record size [{} bytes]",
-                    summary.getCount(), (long)Math.ceil(summary.getAverage()/1024), (long)Math.ceil((double)summary.getSum()/ totalSize));
-        }
-
-        MergeSpliterator<T> spliterator;
-
-        try (FileChannel file = this.file) {
             PriorityQueue<ReadableChunk<T>> queue = makeQueue(this.chunks);
 
-            spliterator = new MergeSpliterator<>(comparator, queue, totalSize);
+            MergeSpliterator<T> spliterator = new MergeSpliterator<>(comparator, queue, totalSize);
+            // TODO: Unmap buffer on close using reflection and DirectByteBuffer#cleaner()
 
-            this.buffer = null;
-            this.file = null;
+            return StreamSupport.stream(spliterator, false)
+                    .onClose(spliterator::close);
         }
-
-        // TODO: Unmap buffer on close using reflection and DirectByteBuffer#cleaner()
-
-        return StreamSupport.stream(spliterator, false)
-                .onClose(spliterator::close);
     }
 
     private static FileChannel createTempFile() throws IOException {
@@ -254,21 +279,36 @@ class Accumulator<T> {
         FileChannel file = this.file;
         ArrayList<Chunk> chunks = this.chunks;
 
-        if (file == null) {
-            this.file = file = createTempFile();
-        }
-        if (buffer == null) {
-            this.buffer = buffer = ByteBuffer.allocate(writeBufferSize);
-            this.directBuffer = directBuffer = ByteBuffer.allocateDirect(writeBufferSize);
-        }
+        try {
+            if (file == null) {
+                this.file = file = createTempFile();
+            }
+            if (buffer == null) {
+                this.buffer = buffer = ByteBuffer.allocate(writeBufferSize);
+                this.directBuffer = directBuffer = ByteBuffer.allocateDirect(writeBufferSize);
+            }
 
-        long t1 = System.currentTimeMillis();
-        int blocks = 0;
-        long offset = file.position();
-        for (int i = 0; i < data.size(); i++) {
-            T elem = data.getAndClear(i);
-            serializer.write(buffer, elem);
-            if (buffer.remaining() < maxRecordSize) {
+            long t1 = System.currentTimeMillis();
+            int blocks = 0;
+            long offset = file.position();
+            for (int i = 0; i < data.size(); i++) {
+                T elem = data.getAndClear(i);
+                serializer.write(buffer, elem);
+                if (buffer.remaining() < maxRecordSize) {
+                    buffer.flip();
+
+                    directBuffer.clear();
+                    directBuffer.put(buffer);
+                    directBuffer.flip();
+
+                    file.write(directBuffer);
+
+                    buffer.clear();
+                    blocks++;
+                }
+            }
+            // write remaining data to file
+            if (buffer.position() > 0) {
                 buffer.flip();
 
                 directBuffer.clear();
@@ -280,28 +320,22 @@ class Accumulator<T> {
                 buffer.clear();
                 blocks++;
             }
+            long length = file.position() - offset;
+
+            if (LOG.isTraceEnabled()) {
+                long t2 = System.currentTimeMillis();
+                LOG.trace("Wrote chunk with [{}] blocks in [{}ms]", blocks, t2 - t1);
+            }
+
+            chunks.add(new Chunk(offset, length));
+        } catch (Throwable t) {
+            try {
+                close();
+            } catch (Throwable t2) {
+                t.addSuppressed(t2);
+            }
+            throw t;
         }
-        // write remaining data to file
-        if (buffer.position() > 0) {
-            buffer.flip();
-
-            directBuffer.clear();
-            directBuffer.put(buffer);
-            directBuffer.flip();
-
-            file.write(directBuffer);
-
-            buffer.clear();
-            blocks++;
-        }
-        long length = file.position() - offset;
-
-        if (LOG.isTraceEnabled()) {
-            long t2 = System.currentTimeMillis();
-            LOG.trace("Wrote chunk with [{}] blocks in [{}ms]", blocks, t2 - t1);
-        }
-
-        chunks.add(new Chunk(offset, length));
     }
 
 }
