@@ -43,16 +43,29 @@ class Accumulator<T> {
 
     static class Elements<T> {
         private final Object[] data;
+        private final boolean parallel;
         private int size;
 
-        Elements(int capacity) {
+        Elements(int capacity, boolean parallel) {
             this.data = new Object[capacity];
+            this.parallel = parallel;
             this.size = 0;
         }
 
         @SuppressWarnings("unchecked")
         void sort(Comparator<T> comparator) {
-            Arrays.sort(data, 0, size, (Comparator<Object>) comparator);
+            long t1 = System.currentTimeMillis();
+
+            if (parallel) {
+                Arrays.parallelSort(data, 0, size, (Comparator<Object>) comparator);
+            } else {
+                Arrays.sort(data, 0, size, (Comparator<Object>) comparator);
+            }
+
+            if (LOG.isTraceEnabled()) {
+                long t2 = System.currentTimeMillis();
+                LOG.trace("Sorted [{}] elements in [{}ms] [{}]", size, t2 - t1, parallel ?  "parallel" : "");
+            }
         }
 
         void add(T elem) {
@@ -93,12 +106,12 @@ class Accumulator<T> {
     private FileChannel file;
 
 
-    Accumulator(ExternalSortCollectors.Serializer<T> serializer, Comparator<T> comparator, int maxRecordSize, int writeBufferSize, int internalSortMaxItems) {
+    Accumulator(ExternalSortCollectors.Serializer<T> serializer, Comparator<T> comparator, int maxRecordSize, int writeBufferSize, int internalSortMaxItems, boolean parallelSort) {
         this.serializer = serializer;
         this.comparator = comparator;
         this.maxRecordSize = maxRecordSize;
         this.writeBufferSize = writeBufferSize;
-        this.data = new Elements<>(internalSortMaxItems);
+        this.data = new Elements<>(internalSortMaxItems, parallelSort);
         this.chunks = new ArrayList<>();
     }
 
@@ -129,6 +142,8 @@ class Accumulator<T> {
                 this.file = acc.file;
                 this.buffer = acc.buffer;
             } else {
+                long t1 = System.currentTimeMillis();
+
                 try (FileChannel other = acc.file) {
                     long offset = file.position();
 
@@ -141,6 +156,11 @@ class Accumulator<T> {
 
                 } catch (IOException e) {
                     throw new UncheckedIOException(e);
+                }
+
+                if (LOG.isTraceEnabled()) {
+                    long t2 = System.currentTimeMillis();
+                    LOG.trace("Combined chunks in [{}ms]", (t2 - t1));
                 }
             }
             acc.file = null;
@@ -231,6 +251,9 @@ class Accumulator<T> {
         if (buffer == null) {
             this.buffer = buffer = ByteBuffer.allocate(writeBufferSize);
         }
+
+        long t1 = System.currentTimeMillis();
+        int blocks = 0;
         long offset = file.position();
         for (int i = 0; i < data.size(); i++) {
             T elem = data.get(i);
@@ -239,6 +262,7 @@ class Accumulator<T> {
                 buffer.flip();
                 file.write(buffer);
                 buffer.clear();
+                blocks++;
             }
         }
         // write remaining data to file
@@ -246,8 +270,15 @@ class Accumulator<T> {
             buffer.flip();
             file.write(buffer);
             buffer.clear();
+            blocks++;
         }
         long length = file.position() - offset;
+
+        if (LOG.isTraceEnabled()) {
+            long t2 = System.currentTimeMillis();
+            LOG.trace("Wrote chunk with [{}] blocks in [{}ms]", blocks, t2 - t1);
+        }
+
         chunks.add(new Chunk(offset, length));
     }
 

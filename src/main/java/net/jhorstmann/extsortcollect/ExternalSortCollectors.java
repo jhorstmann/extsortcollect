@@ -52,7 +52,8 @@ public class ExternalSortCollectors {
                 configuration.getComparator(),
                 configuration.getMaxRecordSize(),
                 configuration.getWriteBufferSize(),
-                configuration.getInternalSortMaxItems());
+                configuration.getInternalSortMaxItems(),
+                configuration.isParallelSort());
     }
 
     public interface Serializer<T> {
@@ -70,6 +71,7 @@ public class ExternalSortCollectors {
         private int maxRecordSize = DEFAULT_MAX_RECORD_SIZE;
         private int writeBufferSize = DEFAULT_WRITE_BUFFER_SIZE;
         private int internalSortMaxItems = DEFAULT_INTERNAL_SORT_MAX_ITEMS;
+        private boolean parallelSort;
 
         ConfigurationBuilder(Serializer<T> serializer) {
             this.serializer = serializer;
@@ -95,6 +97,11 @@ public class ExternalSortCollectors {
             return this;
         }
 
+        public ConfigurationBuilder<T> withParallelSort() {
+            this.parallelSort = true;
+            return this;
+        }
+
         public Configuration<T> build() {
             Comparator<T> comparator = this.comparator;
             if (comparator == null) {
@@ -104,7 +111,7 @@ public class ExternalSortCollectors {
                 throw new IllegalArgumentException("record size must not be larger than write buffer");
             }
 
-            return new Configuration<>(serializer, comparator, maxRecordSize, writeBufferSize, internalSortMaxItems);
+            return new Configuration<>(serializer, comparator, maxRecordSize, writeBufferSize, internalSortMaxItems, parallelSort);
         }
 
         @SuppressWarnings("unchecked")
@@ -119,13 +126,15 @@ public class ExternalSortCollectors {
         private final int maxRecordSize;
         private final int writeBufferSize;
         private final int internalSortMaxItems;
+        private final boolean parallelSort;
 
-        Configuration(Serializer<T> serializer, Comparator<T> comparator, int maxRecordSize, int writeBufferSize, int internalSortMaxItems) {
+        Configuration(Serializer<T> serializer, Comparator<T> comparator, int maxRecordSize, int writeBufferSize, int internalSortMaxItems, boolean parallelSort) {
             this.serializer = serializer;
             this.comparator = comparator;
             this.maxRecordSize = maxRecordSize;
             this.writeBufferSize = writeBufferSize;
             this.internalSortMaxItems = internalSortMaxItems;
+            this.parallelSort = parallelSort;
         }
 
         public Serializer<T> getSerializer() {
@@ -148,6 +157,9 @@ public class ExternalSortCollectors {
             return internalSortMaxItems;
         }
 
+        public boolean isParallelSort() {
+            return parallelSort;
+        }
     }
 
 
