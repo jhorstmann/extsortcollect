@@ -103,6 +103,7 @@ class Accumulator<T> {
     private final ArrayList<Chunk> chunks;
     private long totalSize;
     private ByteBuffer buffer;
+    private ByteBuffer directBuffer;
     private FileChannel file;
 
 
@@ -242,6 +243,7 @@ class Accumulator<T> {
 
     private void writeSortedBuffer() throws IOException {
         ByteBuffer buffer = this.buffer;
+        ByteBuffer directBuffer = this.directBuffer;
         FileChannel file = this.file;
         ArrayList<Chunk> chunks = this.chunks;
 
@@ -250,6 +252,7 @@ class Accumulator<T> {
         }
         if (buffer == null) {
             this.buffer = buffer = ByteBuffer.allocate(writeBufferSize);
+            this.directBuffer = directBuffer = ByteBuffer.allocateDirect(writeBufferSize);
         }
 
         long t1 = System.currentTimeMillis();
@@ -260,7 +263,13 @@ class Accumulator<T> {
             serializer.write(buffer, elem);
             if (buffer.remaining() < maxRecordSize) {
                 buffer.flip();
-                file.write(buffer);
+
+                directBuffer.clear();
+                directBuffer.put(buffer);
+                directBuffer.flip();
+
+                file.write(directBuffer);
+
                 buffer.clear();
                 blocks++;
             }
@@ -268,7 +277,13 @@ class Accumulator<T> {
         // write remaining data to file
         if (buffer.position() > 0) {
             buffer.flip();
-            file.write(buffer);
+
+            directBuffer.clear();
+            directBuffer.put(buffer);
+            directBuffer.flip();
+
+            file.write(directBuffer);
+
             buffer.clear();
             blocks++;
         }
