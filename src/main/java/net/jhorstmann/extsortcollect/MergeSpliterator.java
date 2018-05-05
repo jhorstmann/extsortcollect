@@ -27,6 +27,7 @@ class MergeSpliterator<T> implements Spliterator<T>, Closeable {
 
     @Override
     public boolean tryAdvance(Consumer<? super T> action) {
+        PriorityQueue<ReadableChunk<T>> chunks = this.chunks;
         ReadableChunk<T> chunk = chunks.poll();
 
         if (chunk == null) {
@@ -43,6 +44,23 @@ class MergeSpliterator<T> implements Spliterator<T>, Closeable {
         }
 
         return true;
+    }
+
+    @Override
+    public void forEachRemaining(Consumer<? super T> action) {
+        PriorityQueue<ReadableChunk<T>> chunks = this.chunks;
+        ReadableChunk<T> chunk;
+
+        while (null != (chunk = chunks.poll())) {
+            T data = chunk.next();
+            action.accept(data);
+
+            if (chunk.hasNext()) {
+                chunks.offer(chunk);
+            } else {
+                chunk.close();
+            }
+        }
     }
 
     @Override
