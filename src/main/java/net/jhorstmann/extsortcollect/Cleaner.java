@@ -24,7 +24,6 @@ class Cleaner implements Closeable {
         try {
             // >=JDK9 class sun.misc.Unsafe { void invokeCleaner(ByteBuffer buf) }
             final Class<?> unsafeClass = Class.forName("sun.misc.Unsafe");
-            // fetch the unsafe instance and bind it to the virtual MethodHandle
             final Field f = unsafeClass.getDeclaredField("theUnsafe");
             f.setAccessible(true);
             final Object theUnsafe = f.get(null);
@@ -42,11 +41,13 @@ class Cleaner implements Closeable {
                 final Class<?> directByteBufferClass = Class.forName("java.nio.DirectByteBuffer");
                 Method getCleaner = directByteBufferClass.getMethod("cleaner");
                 getCleaner.setAccessible(true);
+                final Class<?> cleanerClass = Class.forName("sun.misc.Cleaner");
+                Method clean = cleanerClass.getMethod("clean");
+                clean.setAccessible(true);
                 unmap = buffer -> {
                     Object cleaner = getCleaner.invoke(buffer);
+
                     if (cleaner != null) {
-                        Method clean = cleaner.getClass().getMethod("clean");
-                        clean.setAccessible(true);
                         clean.invoke(cleaner);
                     }
                 };
@@ -56,6 +57,16 @@ class Cleaner implements Closeable {
         }
 
         UNMAP = unmap;
+    }
+
+    static void clean(ByteBuffer buffer) {
+        if (UNMAP != null) {
+            try {
+                UNMAP.unmap(buffer);
+            } catch (Exception e) {
+                LOG.info("Could not unmap buffer", e);
+            }
+        }
     }
 
     private final AtomicInteger referenceCount;
@@ -70,13 +81,7 @@ class Cleaner implements Closeable {
     @Override
     public void close() {
         if (referenceCount.decrementAndGet() == 0) {
-            if (UNMAP != null) {
-                try {
-                    UNMAP.unmap(buffer);
-                } catch (Exception e) {
-                    LOG.info("Could not unmap buffer", e);
-                }
-            }
+            clean(buffer);
         }
         buffer = null;
     }

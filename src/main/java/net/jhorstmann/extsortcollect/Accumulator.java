@@ -187,8 +187,6 @@ class Accumulator<T> implements Closeable  {
                     LOG.trace("Combined chunks in [{}ms]", (t2 - t1));
                 }
             }
-            acc.file = null;
-            acc.buffer = null;
         }
         for (int i = 0; i < acc.data.size(); i++) {
             T elem = acc.data.get(i);
@@ -223,6 +221,7 @@ class Accumulator<T> implements Closeable  {
     @Override
     public void close() throws IOException {
         this.buffer = null;
+        Cleaner.clean(this.directBuffer);
         this.directBuffer = null;
 
         if (file != null) {
