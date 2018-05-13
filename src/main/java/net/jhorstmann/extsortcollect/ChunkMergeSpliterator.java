@@ -6,12 +6,12 @@ import java.util.PriorityQueue;
 import java.util.Spliterator;
 import java.util.function.Consumer;
 
-class MergeSpliterator<T> implements Spliterator<T>, Closeable {
+class ChunkMergeSpliterator<T> implements Spliterator<T>, Closeable {
     private final Comparator<T> comparator;
     private final PriorityQueue<ReadableChunk<T>> chunks;
     private final long size;
 
-    MergeSpliterator(Comparator<T> comparator, PriorityQueue<ReadableChunk<T>> chunks, long size) {
+    ChunkMergeSpliterator(Comparator<T> comparator, PriorityQueue<ReadableChunk<T>> chunks, long size) {
         this.comparator = comparator;
         this.chunks = chunks;
         this.size = size;

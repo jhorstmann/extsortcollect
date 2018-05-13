@@ -263,7 +263,7 @@ class Accumulator<T> implements Closeable  {
 
             PriorityQueue<ReadableChunk<T>> queue = makeQueue(this.chunks);
 
-            MergeSpliterator<T> spliterator = new MergeSpliterator<>(comparator, queue, totalSize);
+            ChunkMergeSpliterator<T> spliterator = new ChunkMergeSpliterator<>(comparator, queue, totalSize);
 
             return StreamSupport.stream(spliterator, false)
                     .onClose(spliterator::close);
