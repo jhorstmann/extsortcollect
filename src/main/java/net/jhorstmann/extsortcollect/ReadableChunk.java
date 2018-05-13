@@ -25,8 +25,12 @@ class ReadableChunk<T> implements Comparable<ReadableChunk<T>>, Iterator<T>, Clo
     public void close() {
         this.buffer = null;
         this.data = null;
-        this.cleaner.close();
-        this.cleaner = null;
+
+        Cleaner cleaner = this.cleaner;
+        if (cleaner != null) {
+            cleaner.close();
+            this.cleaner = null;
+        }
     }
 
     private T current() {

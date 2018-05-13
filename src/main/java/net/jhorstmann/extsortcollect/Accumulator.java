@@ -221,8 +221,12 @@ class Accumulator<T> implements Closeable  {
     @Override
     public void close() throws IOException {
         this.buffer = null;
-        Cleaner.clean(this.directBuffer);
-        this.directBuffer = null;
+
+        ByteBuffer directBuffer = this.directBuffer;
+        if (directBuffer != null) {
+            Cleaner.clean(directBuffer);
+            this.directBuffer = null;
+        }
 
         if (file != null) {
             this.file.close();
@@ -260,7 +264,6 @@ class Accumulator<T> implements Closeable  {
             PriorityQueue<ReadableChunk<T>> queue = makeQueue(this.chunks);
 
             MergeSpliterator<T> spliterator = new MergeSpliterator<>(comparator, queue, totalSize);
-            // TODO: Unmap buffer on close using reflection and DirectByteBuffer#cleaner()
 
             return StreamSupport.stream(spliterator, false)
                     .onClose(spliterator::close);
