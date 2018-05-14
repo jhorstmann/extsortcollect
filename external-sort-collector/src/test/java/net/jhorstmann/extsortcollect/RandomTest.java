@@ -102,7 +102,7 @@ class RandomTest {
         ThreadLocalRandom random = ThreadLocalRandom.current();
         return IntStream.of(1, 2, 3, 5, 10, 20, 100, 101, 10_000)
                 .mapToObj(size -> random.ints(size, 1, 100_000)
-                        .mapToObj(i -> new Data(i, String.valueOf(i * 31), String.valueOf((long)i * 17*31)))
+                        .mapToObj(i -> new Data(i, String.valueOf(i * 31)))
                         .collect(toList()));
     }
 

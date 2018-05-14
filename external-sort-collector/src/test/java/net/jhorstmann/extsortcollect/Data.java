@@ -3,12 +3,10 @@ package net.jhorstmann.extsortcollect;
 class Data {
     private final int id;
     private final String key;
-    private final String payload;
 
-    Data(int id, String key, String payload) {
+    Data(int id, String key) {
         this.id = id;
         this.key = key;
-        this.payload = payload;
     }
 
     int getId() {
@@ -17,10 +15,6 @@ class Data {
 
     String getKey() {
         return key;
-    }
-
-    public String getPayload() {
-        return payload;
     }
 
     @Override

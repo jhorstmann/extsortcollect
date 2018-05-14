@@ -1,4 +1,4 @@
-package net.jhorstmann.extsortcollect;
+package net.jhorstmann.extsortcollect.benchmark;
 
 import org.geirove.exmeso.ExternalMergeSort;
 
@@ -16,9 +16,6 @@ class ExmesoDataSerializer implements ExternalMergeSort.Serializer<Data> {
             while (iterator.hasNext()) {
                 Data data = iterator.next();
                 dos.writeInt(data.getId());
-                String key = data.getKey();
-                dos.writeInt(key.length());
-                dos.writeChars(key);
                 String payload = data.getPayload();
                 dos.writeInt(payload.length());
                 dos.writeChars(payload);
@@ -47,21 +44,9 @@ class ExmesoDataSerializer implements ExternalMergeSort.Serializer<Data> {
                     throw new IllegalStateException("invalid id " + id);
                 }
 
-                int keylen = dis.readInt();
-                if (keylen <= 0) {
-                    throw new IllegalStateException("negative length " + keylen);
-                }
-
-                char[] key = new char[keylen];
-                for (int i = 0; i < keylen; i++) {
-                    key[i] = dis.readChar();
-                    if (key[i] < '0' || key[i] > '9') {
-                        throw new IllegalStateException("not a digit " + key[i]);
-                    }
-                }
                 int payloadlen = dis.readInt();
                 if (payloadlen <= 0) {
-                    throw new IllegalStateException("negative length " + keylen);
+                    throw new IllegalStateException("negative length " + payloadlen);
                 }
 
                 char[] payload = new char[payloadlen];
@@ -71,7 +56,7 @@ class ExmesoDataSerializer implements ExternalMergeSort.Serializer<Data> {
                         throw new IllegalStateException("not a digit " + payload[i]);
                     }
                 }
-                return new Data(id, new String(key), new String(payload));
+                return new Data(id, new String(payload));
             } catch (EOFException e) {
                 return null;
             } catch (IOException e) {

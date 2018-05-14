@@ -1,4 +1,4 @@
-package net.jhorstmann.extsortcollect;
+package net.jhorstmann.extsortcollect.benchmark;
 
 import org.geirove.exmeso.CloseableIterator;
 import org.geirove.exmeso.ExternalMergeSort;

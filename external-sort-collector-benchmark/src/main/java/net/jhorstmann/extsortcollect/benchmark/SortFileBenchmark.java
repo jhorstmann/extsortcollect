@@ -1,17 +1,15 @@
-package net.jhorstmann.extsortcollect;
+package net.jhorstmann.extsortcollect.benchmark;
+
+import net.jhorstmann.extsortcollect.ExternalSortCollectors;
 
 import java.io.IOException;
-import java.io.UncheckedIOException;
-import java.nio.channels.FileChannel;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collector;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import java.util.stream.StreamSupport;
 
 public class SortFileBenchmark {
     public static void main(String[] args) throws IOException {

@@ -1,11 +1,9 @@
-package net.jhorstmann.extsortcollect;
+package net.jhorstmann.extsortcollect.benchmark;
 
+import net.jhorstmann.extsortcollect.ExternalSortCollectors;
 import org.geirove.exmeso.CloseableIterator;
 import org.geirove.exmeso.ExternalMergeSort;
-import org.openjdk.jmh.annotations.Benchmark;
-import org.openjdk.jmh.annotations.BenchmarkMode;
-import org.openjdk.jmh.annotations.Mode;
-import org.openjdk.jmh.profile.LinuxPerfNormProfiler;
+import org.openjdk.jmh.annotations.*;
 import org.openjdk.jmh.runner.Runner;
 import org.openjdk.jmh.runner.RunnerException;
 import org.openjdk.jmh.runner.options.Options;
@@ -22,15 +20,20 @@ import java.util.stream.StreamSupport;
 public class SortStreamBenchmark {
 
     private static final long SEED = 1234567890L;
-    private static final int STREAM_SIZE = 20_000_000;
+    private static final int STREAM_SIZE = 10_000_000;
     private static final int RAND_MAX = 100_000;
     private static final int SKIP = 10_000;
     private static final int LIMIT = 100;
 
+    @State(Scope.Benchmark)
+    public static class Input {
+        @Param({"1", "5", "10", "20", "50"})
+        int payloadRepeat;
+    }
 
 
     @Benchmark
-    public List<Data> exmesoSort() throws IOException {
+    public List<Data> exmesoSort(Input input) throws IOException {
 
 
         ExternalMergeSort.debugMerge = false;
@@ -43,7 +46,7 @@ public class SortStreamBenchmark {
                 .build();
 
 
-        try (CloseableIterator<Data> it = sort.mergeSort(getDataStream().iterator())) {
+        try (CloseableIterator<Data> it = sort.mergeSort(getDataStream(input).iterator())) {
             List<Data> list = StreamSupport.stream(Spliterators.spliterator(it, Long.MAX_VALUE, Spliterator.SORTED | Spliterator.NONNULL | Spliterator.ORDERED), false)
                     .onClose(() -> {
                         try {
@@ -76,7 +79,7 @@ public class SortStreamBenchmark {
     }
 
     @Benchmark
-    public List<Data> streamSort() {
+    public List<Data> streamSort(Input input) {
         ExternalSortCollectors.Configuration<Data> configuration = ExternalSortCollectors.configuration(new DataSerializer())
                 .withComparator(Comparator.comparing(Data::getId))
                 .withInternalSortMaxItems(100_000)
@@ -86,7 +89,7 @@ public class SortStreamBenchmark {
 
         long t1 = System.currentTimeMillis();
 
-        try (Stream<Data> stream = getDataStream()
+        try (Stream<Data> stream = getDataStream(input)
                 .collect(ExternalSortCollectors.externalSort(configuration))) {
             List<Data> list = stream
                     .skip(SKIP)
@@ -96,14 +99,23 @@ public class SortStreamBenchmark {
         }
     }
 
-    private static Stream<Data> getDataStream() {
+    private static Stream<Data> getDataStream(Input input) {
         Random random = new Random(SEED);
 
         return random.ints(STREAM_SIZE, 1, RAND_MAX +1)
-                .mapToObj(id ->  new Data(id, String.valueOf(id * 31), String.valueOf((long) id * 17 * 31)));
+                .mapToObj(id ->  dataWithPayload(id, input.payloadRepeat));
     }
 
-    public static void main(String[] args) throws IOException, RunnerException {
+    private static Data dataWithPayload(int id, int payloadRepeat) {
+        StringBuilder sb = new StringBuilder(32);
+        for (int i = 0; i < payloadRepeat; i++) {
+            sb.append(id*17);
+        }
+        return new Data(id, sb.toString());
+
+    }
+
+    public static void main(String[] args) throws RunnerException {
 
         System.setProperty("org.slf4j.simpleLogger.defaultLogLevel", "debug");
 

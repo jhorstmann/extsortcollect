@@ -1,4 +1,4 @@
-package net.jhorstmann.extsortcollect;
+package net.jhorstmann.extsortcollect.benchmark;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -21,8 +21,12 @@ public class GenerateRandomDataFile {
                 for (int j = 0; j < 20; j++) {
 
                     int id = random.nextInt(100_000) + 1;
+                    StringBuilder sb = new StringBuilder();
+                    for (int k = 0; k < 10; k++) {
+                        sb.append(id*17);
+                    }
 
-                    serializer.write(buffer, new Data(id, String.valueOf(id * 31), String.valueOf((long) id * 17 * 31)));
+                    serializer.write(buffer, new Data(id, sb.toString()));
                 }
                 buffer.flip();
                 file.write(buffer);
