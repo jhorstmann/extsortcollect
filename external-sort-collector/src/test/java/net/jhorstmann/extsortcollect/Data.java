@@ -2,19 +2,19 @@ package net.jhorstmann.extsortcollect;
 
 class Data {
     private final int id;
-    private final String key;
+    private final String payload;
 
-    Data(int id, String key) {
+    Data(int id, String payload) {
         this.id = id;
-        this.key = key;
+        this.payload = payload;
     }
 
     int getId() {
         return id;
     }
 
-    String getKey() {
-        return key;
+    String getPayload() {
+        return payload;
     }
 
     @Override
@@ -25,7 +25,7 @@ class Data {
         Data data = (Data) o;
 
         if (id != data.id) return false;
-        return key.equals(data.key);
+        return payload.equals(data.payload);
     }
 
     @Override
@@ -35,6 +35,6 @@ class Data {
 
     @Override
     public String toString() {
-        return key;
+        return String.valueOf(id);
     }
 }

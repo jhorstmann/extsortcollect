@@ -28,8 +28,7 @@ stream.collect(ExternalSortCollectors.externalSort(configuration))
 ## Comparison with [exmeso](https://github.com/grove/exmeso)
 
  - Based on NIO buffers instead of InputStream/OutputStream, this imposes a maximum record size which can be configured
- - Support for parallel sorting
- - About 1.5 times as fast according to benchmarks (without parallel sorting)
+ - Between same speed and 1.5 times as fast, depending on CPU/IO/data size
+ - Support for parallel sorting gives a nice speed-up on multicore machines
  - Sort is stable (See [issue #3 in exmeso](https://github.com/grove/exmeso/issues/3)
  - Temporary sorted chunks are stored in one large file instead of one file per chunk
- - Currently limited to a total file size of 2GB

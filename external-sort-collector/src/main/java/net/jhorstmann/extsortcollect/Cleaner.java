@@ -31,7 +31,7 @@ class Cleaner implements Closeable {
 
             unmap = buffer -> method.invoke(theUnsafe, buffer);
         } catch (Exception e) {
-            LOG.info("Could not access 'Unsafe.invokeCleaner' method");
+            LOG.info("Could not access 'Unsafe.invokeCleaner' method, falling back to <=JDK8 impl");
         }
 
         if (unmap == null) {
@@ -52,7 +52,7 @@ class Cleaner implements Closeable {
                     }
                 };
             } catch (Exception e) {
-                LOG.info("Could not access 'DirectByteBuffer.cleaner' method");
+                LOG.warn("Could not access 'DirectByteBuffer.cleaner' method");
             }
         }
 
@@ -72,18 +72,24 @@ class Cleaner implements Closeable {
     private final AtomicInteger referenceCount;
     private ByteBuffer buffer;
 
-    Cleaner(AtomicInteger referenceCount, ByteBuffer buffer) {
-        this.referenceCount = referenceCount;
+    Cleaner(ByteBuffer buffer) {
+        this.referenceCount = new AtomicInteger();
         this.buffer = buffer;
+    }
+
+    public Cleaner reference() {
         referenceCount.incrementAndGet();
+        return this;
     }
 
     @Override
     public void close() {
-        if (referenceCount.decrementAndGet() == 0) {
-            clean(buffer);
+        if (buffer != null) {
+            if (referenceCount.decrementAndGet() == 0) {
+                clean(buffer);
+            }
+            buffer = null;
         }
-        buffer = null;
     }
 
 }

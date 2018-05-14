@@ -68,4 +68,8 @@ class ReadableChunk<T> implements Comparable<ReadableChunk<T>>, Iterator<T>, Clo
             return Integer.compare(stableOrder, o.stableOrder);
         }
     }
+
+    public String toString() {
+        return String.format("[%d, %d)", buffer.position(), buffer.limit());
+    }
 }

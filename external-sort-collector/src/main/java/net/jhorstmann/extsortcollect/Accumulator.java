@@ -13,12 +13,21 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
 class Accumulator<T> implements Closeable  {
     private static final Logger LOG = LoggerFactory.getLogger(ExternalSortCollectors.class);
+
+    // restrict maximum size per MappedByteBuffer to between 1GB and 2GB
+    private static final int MAX_MAPPING_SIZE = 1*1024*1024*1024;
+    private static final int MAPPING_SIZE_SHIFT = 63 - Long.numberOfLeadingZeros(MAX_MAPPING_SIZE);
+
+    static {
+        if (1 << MAPPING_SIZE_SHIFT != MAX_MAPPING_SIZE) {
+            throw new AssertionError("MAX_MAPPING_SIZE must be a power of two");
+        }
+    }
 
     static class Chunk {
         private final long offset;
@@ -234,19 +243,53 @@ class Accumulator<T> implements Closeable  {
         }
     }
 
+
+
     private PriorityQueue<ReadableChunk<T>> makeQueue(List<Chunk> chunks) throws IOException {
         PriorityQueue<ReadableChunk<T>> queue = new PriorityQueue<>();
-        MappedByteBuffer buffer = file.map(FileChannel.MapMode.READ_ONLY, 0, file.size());
-        // TODO: create multiple mappings if file to large for single ByteBuffer
-        AtomicInteger referenceCount = new AtomicInteger(0);
+        long[] offsets = new long[16];
+        Arrays.fill(offsets, -1L);
+        int m = 0;
         for (int i = 0; i < chunks.size(); i++) {
             Chunk chunk = chunks.get(i);
+            long offset = chunk.getOffset();
+            long length = chunk.getLength();
+            m = (int) ((offset + length) >>> MAPPING_SIZE_SHIFT);
+            if (m >= offsets.length) {
+                int oldlen = offsets.length;
+                offsets = Arrays.copyOf(offsets, oldlen * 2);
+                Arrays.fill(offsets, oldlen, offsets.length, -1);
+            }
+            if (offsets[m] == -1) {
+                offsets[m] = offset;
+            }
+        }
+        offsets[m+1] = file.size();
 
-            ByteBuffer view = buffer.slice();
-            view.position(Math.toIntExact(chunk.getOffset()));
-            view.limit(Math.toIntExact(chunk.getOffset() + chunk.getLength()));
+        if (LOG.isTraceEnabled()) {
+            LOG.trace("Mapping chunks at offsets {}", Arrays.toString(Arrays.copyOf(offsets, m + 1)));
+        }
 
-            Cleaner cleaner = new Cleaner(referenceCount, buffer);
+        MappedByteBuffer[] mappings = new MappedByteBuffer[m+1];
+        Cleaner[] cleaners = new Cleaner[m+1];
+        for (int i = 0; i < m+1; i++) {
+            long length = offsets[i+1] - offsets[i];
+            mappings[i] = file.map(FileChannel.MapMode.READ_ONLY, offsets[i], length);
+            cleaners[i] = new Cleaner(mappings[i]);
+        }
+
+        for (int i = 0; i < chunks.size(); i++) {
+            Chunk chunk = chunks.get(i);
+            long offset = chunk.getOffset();
+            long limit = offset + chunk.getLength();
+
+            m = (int) (limit >> MAPPING_SIZE_SHIFT);
+
+            ByteBuffer view = mappings[m].slice();
+            view.position(Math.toIntExact(offset - offsets[m]));
+            view.limit(Math.toIntExact(limit - offsets[m]));
+
+            Cleaner cleaner = cleaners[m].reference();
 
             queue.add(new ReadableChunk<>(serializer, comparator, view, cleaner, i));
         }
@@ -327,6 +370,10 @@ class Accumulator<T> implements Closeable  {
             if (LOG.isTraceEnabled()) {
                 long t2 = System.currentTimeMillis();
                 LOG.trace("Wrote chunk with [{}] blocks in [{}ms]", blocks, t2 - t1);
+            }
+
+            if (length > MAX_MAPPING_SIZE/2) {
+                throw new IllegalStateException("Chunk too large [" + length + "]");
             }
 
             chunks.add(new Chunk(offset, length));

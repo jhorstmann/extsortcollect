@@ -27,7 +27,7 @@ public class SortStreamBenchmark {
 
     @State(Scope.Benchmark)
     public static class Input {
-        @Param({"1", "5", "10", "20", "50"})
+        @Param({"1", "5", "10", "20"})
         int payloadRepeat;
     }
 
@@ -35,10 +35,11 @@ public class SortStreamBenchmark {
     @Benchmark
     public List<Data> exmesoSort(Input input) throws IOException {
 
-
         ExternalMergeSort.debugMerge = false;
         ExternalMergeSort.debug = false;
-        ExternalMergeSort<Data> sort = ExternalMergeSort.newSorter(new ExmesoDataSerializer(), Comparator.comparing(Data::getId))
+        ExmesoDataSerializer serializer = new ExmesoDataSerializer();
+        Comparator<Data> comparator = Comparator.comparing(Data::getId);
+        ExternalMergeSort<Data> sort = ExternalMergeSort.newSorter(serializer, comparator)
                 .withChunkSize(100_000)
                 .withMaxOpenFiles(2000)
                 .withDistinct(false)
@@ -58,6 +59,13 @@ public class SortStreamBenchmark {
                     .skip(SKIP)
                     .limit(LIMIT)
                     .collect(Collectors.toList());
+
+            List<Data> sorted = new ArrayList<>(list);
+            sorted.sort(comparator);
+
+            if (!sorted.equals(list)) {
+                throw new IllegalStateException("Data was not sorted");
+            }
 
             return list;
             /*
@@ -80,8 +88,11 @@ public class SortStreamBenchmark {
 
     @Benchmark
     public List<Data> streamSort(Input input) {
-        ExternalSortCollectors.Configuration<Data> configuration = ExternalSortCollectors.configuration(new DataSerializer())
-                .withComparator(Comparator.comparing(Data::getId))
+        DataSerializer serializer = new DataSerializer();
+        Comparator<Data> comparator = Comparator.comparing(Data::getId);
+
+        ExternalSortCollectors.Configuration<Data> configuration = ExternalSortCollectors.configuration(serializer)
+                .withComparator(comparator)
                 .withInternalSortMaxItems(100_000)
                 .withMaxRecordSize(1024)
                 .withWriteBufferSize(16 * 4096)
@@ -95,6 +106,14 @@ public class SortStreamBenchmark {
                     .skip(SKIP)
                     .limit(LIMIT)
                     .collect(Collectors.toList());
+
+            List<Data> sorted = new ArrayList<>(list);
+            sorted.sort(comparator);
+
+            if (!sorted.equals(list)) {
+                throw new IllegalStateException("Data was not sorted");
+            }
+
             return list;
         }
     }
