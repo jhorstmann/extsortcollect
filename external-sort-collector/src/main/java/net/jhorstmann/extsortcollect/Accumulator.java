@@ -264,18 +264,19 @@ class Accumulator<T> implements Closeable  {
                 offsets[m] = offset;
             }
         }
-        offsets[m+1] = file.size();
 
         if (LOG.isTraceEnabled()) {
-            LOG.trace("Mapping chunks at offsets {}", Arrays.toString(Arrays.copyOf(offsets, m + 1)));
+            LOG.trace("Mapping chunks at offsets {}", Arrays.toString(Arrays.copyOf(offsets, m)));
         }
 
         MappedByteBuffer[] mappings = new MappedByteBuffer[m+1];
         Cleaner[] cleaners = new Cleaner[m+1];
         for (int i = 0; i < m+1; i++) {
-            long length = offsets[i+1] - offsets[i];
-            mappings[i] = file.map(FileChannel.MapMode.READ_ONLY, offsets[i], length);
-            cleaners[i] = new Cleaner(mappings[i]);
+            long offset = offsets[i];
+            long length = (i == m ? file.size() : offsets[i+1]) - offset;
+            MappedByteBuffer buffer = file.map(FileChannel.MapMode.READ_ONLY, offset, length);
+            mappings[i] = buffer;
+            cleaners[i] = new Cleaner(buffer);
         }
 
         for (int i = 0; i < chunks.size(); i++) {
